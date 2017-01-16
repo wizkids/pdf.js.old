@@ -889,6 +889,15 @@ var WorkerMessageHandler = {
         });
       });
     }, this);
+    
+    handler.on('GetPageMetadata', function GetPageMetadata(data) {
+      var pageIndex = data.pageIndex;
+      
+      return pdfManager.getPage(pageIndex)
+      .then(function(page) {
+        return page.metadataString;
+      })
+    });
 
     handler.on('GetTextContent', function wphExtractText(data) {
       var pageIndex = data.pageIndex;

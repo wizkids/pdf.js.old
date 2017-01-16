@@ -772,29 +772,11 @@ var ButtonWidgetAnnotation = (function ButtonWidgetAnnotationClosure() {
 
     this.data.checkBox = !this.hasFieldFlag(AnnotationFieldFlag.RADIO) &&
                          !this.hasFieldFlag(AnnotationFieldFlag.PUSHBUTTON);
-    if (this.data.checkBox) {
-      if (!isName(this.data.fieldValue)) {
-        return;
-      }
-      this.data.fieldValue = this.data.fieldValue.name;
-    }
-
     this.data.radioButton = this.hasFieldFlag(AnnotationFieldFlag.RADIO) &&
-                            !this.hasFieldFlag(AnnotationFieldFlag.PUSHBUTTON);
-    if (this.data.radioButton) {
-      this.data.fieldValue = this.data.buttonValue = null;
-
-      // The parent field's `V` entry holds a `Name` object with the appearance
-      // state of whichever child field is currently in the "on" state.
-      var fieldParent = params.dict.get('Parent');
-      if (!isDict(fieldParent) || !fieldParent.has('V')) {
-        return;
-      }
-      var fieldParentValue = fieldParent.get('V');
-      if (!isName(fieldParentValue)) {
-        return;
-      }
-      this.data.fieldValue = fieldParentValue.name;
+                           !this.hasFieldFlag(AnnotationFieldFlag.PUSHBUTTON);
+    
+    if (this.data.radioButton || this.data.checkBox) {
+      this.data.buttonValue = null;
 
       // The button's value corresponds to its appearance state.
       var appearanceStates = params.dict.get('AP');
@@ -812,6 +794,28 @@ var ButtonWidgetAnnotation = (function ButtonWidgetAnnotationClosure() {
           break;
         }
       }
+    }
+    
+    if (this.data.checkBox) {
+      if (!isName(this.data.fieldValue)) {
+        return;
+      }
+      this.data.fieldValue = this.data.fieldValue.name;
+    }
+    if (this.data.radioButton) {
+      this.data.fieldValue = null;
+
+      // The parent field's `V` entry holds a `Name` object with the appearance
+      // state of whichever child field is currently in the "on" state.
+      var fieldParent = params.dict.get('Parent');
+      if (!isDict(fieldParent) || !fieldParent.has('V')) {
+        return;
+      }
+      var fieldParentValue = fieldParent.get('V');
+      if (!isName(fieldParentValue)) {
+        return;
+      }
+      this.data.fieldValue = fieldParentValue.name;
     }
   }
 

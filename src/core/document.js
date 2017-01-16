@@ -130,6 +130,22 @@ var Page = (function PageClosure() {
     get content() {
       return this.getPageProp('Contents');
     },
+    
+    get metadataString() {
+      if (typeof this.metadata_ === "string" || this.metadata_ === null) return this.metadata_;
+      
+      var stream = shadow(this, 'metadata', this.getInheritedPageProp('Metadata'));
+      if (stream && typeof stream.getBytes === "function") {
+        var bytes = stream.getBytes();
+        
+        this.metadata_ = "";
+        for (var i = 0; i < bytes.length; i++)
+          this.metadata_ += String.fromCharCode(bytes[i]);
+        return this.metadata_;
+      } else {
+        return this.metadata_;
+      }
+    },
 
     get resources() {
       // For robustness: The spec states that a \Resources entry has to be

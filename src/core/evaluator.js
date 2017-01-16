@@ -844,6 +844,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       resources = (resources || Dict.empty);
       var xobjs = (resources.get('XObject') || Dict.empty);
       var patterns = (resources.get('Pattern') || Dict.empty);
+      var properties = (resources.get("Properties") || Dict.empty);
       var stateManager = new StateManager(initialState || new EvalState());
       var preprocessor = new EvaluatorPreprocessor(stream, xref, stateManager);
       var timeSlotManager = new TimeSlotManager();
@@ -874,6 +875,27 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           var fn = operation.fn;
 
           switch (fn | 0) {
+            case OPS.beginMarkedContent:
+              args[0] = args[0].name;
+              break;
+            case OPS.beginMarkedContentProps:
+              if (args[0].name === "OC") {
+                var layerProperty = properties.get(args[1].name);
+                
+                var layer = {
+                  name: layerProperty.get("Name"),
+                  type: layerProperty.get("Type").name
+                };
+                args[0] = args[0].name;
+                args[1] = layer;
+              } else {
+                args[0] = args[0].name;
+                args[1] = null;
+              }
+              
+              break;
+            case OPS.endMarkedContent:
+              break;
             case OPS.paintXObject:
               if (args[0].code) {
                 break;
@@ -1090,9 +1112,6 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               continue;
             case OPS.markPoint:
             case OPS.markPointProps:
-            case OPS.beginMarkedContent:
-            case OPS.beginMarkedContentProps:
-            case OPS.endMarkedContent:
             case OPS.beginCompat:
             case OPS.endCompat:
               // Ignore operators where the corresponding handlers are known to
@@ -1143,6 +1162,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       var WhitespaceRegexp = /\s/g;
 
+      var markedContentStack = [];
       var textContent = {
         items: [],
         styles: Object.create(null)
@@ -1172,6 +1192,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       var xref = this.xref;
 
       resources = (xref.fetchIfRef(resources) || Dict.empty);
+      var properties = (resources.get("Properties") || Dict.empty);
 
       // The xobj is parsed iff it's needed, e.g. if there is a `DO` cmd.
       var xobjs = null;
@@ -1394,7 +1415,17 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         // Do final text scaling
         textContentItem.width *= textContentItem.textAdvanceScale;
         textContentItem.height *= textContentItem.textAdvanceScale;
-        textContent.items.push(runBidiTransform(textContentItem));
+        
+        var item = runBidiTransform(textContentItem);
+        
+        item.layers = [];
+        for (var i = 0; i < markedContentStack.length; i++) {
+          if (markedContentStack[i]) {
+            item.layers.push(markedContentStack[i]);
+          }
+        }
+        
+        textContent.items.push(item);
 
         textContentItem.initialized = false;
         textContentItem.str.length = 0;
@@ -1430,6 +1461,31 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           var advance, diff;
 
           switch (fn | 0) {
+            case OPS.beginMarkedContent:
+              flushTextContentItem();
+              markedContentStack.push(null);
+              break;
+            case OPS.beginMarkedContentProps:
+              flushTextContentItem();
+              if (args[0].name === "OC") {
+                var layerProperty = properties.get(args[1].name);
+                
+                var layer = {
+                  name: layerProperty.get("Name"),
+                  type: layerProperty.get("Type").name
+                };
+                args[0] = args[0].name;
+                args[1] = layer;
+                
+                markedContentStack.push(layer);
+              } else {
+                markedContentStack.push(null);
+              }
+              break;
+            case OPS.endMarkedContent:
+              flushTextContentItem();
+              markedContentStack.pop();
+              break;
             case OPS.setFont:
               // Optimization to ignore multiple identical Tf commands.
               var fontNameArg = args[0].name, fontSizeArg = args[1];
