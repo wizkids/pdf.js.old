@@ -188,6 +188,20 @@ var Annotation = (function AnnotationClosure() {
     return appearance;
   }
 
+  function getAppearances(dict) {
+    var appearanceState = dict.get('AP');
+    if (!isDict(appearanceState)) {
+      return null;
+    }
+
+    var appearance;
+    var appearances = appearanceState.get('N');
+    if (isDict(appearances)) {
+      return appearances;
+    }
+    return null;
+  }
+
   function Annotation(params) {
     var dict = params.dict;
 
@@ -196,6 +210,7 @@ var Annotation = (function AnnotationClosure() {
     this.setColor(dict.getArray('C'));
     this.setBorderStyle(dict);
     this.appearance = getDefaultAppearance(dict);
+    this.appearances = getAppearances(dict);
 
     // Expose public properties using a data object.
     this.data = {};
@@ -413,6 +428,18 @@ var Annotation = (function AnnotationClosure() {
           }, reject);
         }, reject);
       }.bind(this));
+    },
+    
+    setAppearance: function Annotation_setAppearance(appearance) {
+      if (!this.appearances || !isDict(this.appearances)) {
+        return;
+      }
+
+      if (this.appearances.has(appearance)) {
+        this.appearance = this.appearances.get(appearance);
+      } else {
+        this.appearance = null;
+      }
     },
 
     getOperatorList: function Annotation_getOperatorList(evaluator, task,
