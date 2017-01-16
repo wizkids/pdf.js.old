@@ -640,6 +640,38 @@ var WidgetAnnotation = (function WidgetAnnotationClosure() {
     if (data.fieldType === 'Sig') {
       this.setFlags(AnnotationFlag.HIDDEN);
     }
+    
+    // Building the full field name by collecting the field and
+    // its ancestors 'T' data and joining them using '.'.
+    var fieldName = [];
+    var namedItem = dict;
+    var ref = params.ref;
+    while (namedItem) {
+      var parent = namedItem.get('Parent');
+      var parentRef = namedItem.getRaw('Parent');
+      var name = namedItem.get('T');
+      if (name) {
+        fieldName.unshift(stringToPDFString(name));
+      } else if (parent && ref) {
+        // The field name is absent, that means more than one field
+        // with the same name may exist. Replacing the empty name
+        // with the '`' plus index in the parent's 'Kids' array.
+        // This is not in the PDF spec but necessary to id the
+        // the input controls.
+        var kids = parent.get('Kids');
+        var j, jj;
+        for (j = 0, jj = kids.length; j < jj; j++) {
+          var kidRef = kids[j];
+          if (kidRef.num === ref.num && kidRef.gen === ref.gen) {
+            break;
+          }
+        }
+        fieldName.unshift('`' + j);
+      }
+      namedItem = parent;
+      ref = parentRef;
+    }
+    data.fullName = fieldName.join('.');
   }
 
   Util.inherit(WidgetAnnotation, Annotation, {
