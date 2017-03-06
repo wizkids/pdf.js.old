@@ -138,9 +138,8 @@ var Page = (function PageClosure() {
       if (stream && typeof stream.getBytes === "function") {
         var bytes = stream.getBytes();
         
-        this.metadata_ = "";
-        for (var i = 0; i < bytes.length; i++)
-          this.metadata_ += String.fromCharCode(bytes[i]);
+        var decoder = new TextDecoder("utf-8");
+        this.metadata_ = decoder.decode(bytes);
         return this.metadata_;
       } else {
         return this.metadata_;
