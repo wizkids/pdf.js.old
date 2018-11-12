@@ -13,93 +13,294 @@
  * limitations under the License.
  */
 
-'use strict';
+import {
+  assert, CMapCompressionType, removeNullCharacters, stringToBytes,
+  unreachable, Util, warn
+} from '../shared/util';
 
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/display/dom_utils', ['exports', 'pdfjs/shared/util'],
-      factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'));
-  } else {
-    factory((root.pdfjsDisplayDOMUtils = {}), root.pdfjsSharedUtil);
+const DEFAULT_LINK_REL = 'noopener noreferrer nofollow';
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+class DOMCanvasFactory {
+  create(width, height) {
+    if (width <= 0 || height <= 0) {
+      throw new Error('invalid canvas size');
+    }
+    let canvas = document.createElement('canvas');
+    let context = canvas.getContext('2d');
+    canvas.width = width;
+    canvas.height = height;
+    return {
+      canvas,
+      context,
+    };
   }
-}(this, function (exports, sharedUtil) {
 
-var removeNullCharacters = sharedUtil.removeNullCharacters;
-var warn = sharedUtil.warn;
-var deprecated = sharedUtil.deprecated;
-var createValidAbsoluteUrl = sharedUtil.createValidAbsoluteUrl;
-
-/**
- * Optimised CSS custom property getter/setter.
- * @class
- */
-var CustomStyle = (function CustomStyleClosure() {
-
-  // As noted on: http://www.zachstronaut.com/posts/2009/02/17/
-  //              animate-css-transforms-firefox-webkit.html
-  // in some versions of IE9 it is critical that ms appear in this list
-  // before Moz
-  var prefixes = ['ms', 'Moz', 'Webkit', 'O'];
-  var _cache = Object.create(null);
-
-  function CustomStyle() {}
-
-  CustomStyle.getProp = function get(propName, element) {
-    // check cache only when no element is given
-    if (arguments.length === 1 && typeof _cache[propName] === 'string') {
-      return _cache[propName];
+  reset(canvasAndContext, width, height) {
+    if (!canvasAndContext.canvas) {
+      throw new Error('canvas is not specified');
     }
-
-    element = element || document.documentElement;
-    var style = element.style, prefixed, uPropName;
-
-    // test standard property first
-    if (typeof style[propName] === 'string') {
-      return (_cache[propName] = propName);
+    if (width <= 0 || height <= 0) {
+      throw new Error('invalid canvas size');
     }
+    canvasAndContext.canvas.width = width;
+    canvasAndContext.canvas.height = height;
+  }
 
-    // capitalize
-    uPropName = propName.charAt(0).toUpperCase() + propName.slice(1);
-
-    // test vendor specific properties
-    for (var i = 0, l = prefixes.length; i < l; i++) {
-      prefixed = prefixes[i] + uPropName;
-      if (typeof style[prefixed] === 'string') {
-        return (_cache[propName] = prefixed);
-      }
+  destroy(canvasAndContext) {
+    if (!canvasAndContext.canvas) {
+      throw new Error('canvas is not specified');
     }
-
-    //if all fails then set to undefined
-    return (_cache[propName] = 'undefined');
-  };
-
-  CustomStyle.setProp = function set(propName, element, str) {
-    var prop = this.getProp(propName);
-    if (prop !== 'undefined') {
-      element.style[prop] = str;
-    }
-  };
-
-  return CustomStyle;
-})();
-
-var hasCanvasTypedArrays;
-if (typeof PDFJSDev === 'undefined' ||
-    !PDFJSDev.test('FIREFOX || MOZCENTRAL || CHROME')) {
-  hasCanvasTypedArrays = function hasCanvasTypedArrays() {
-    var canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 1;
-    var ctx = canvas.getContext('2d');
-    var imageData = ctx.createImageData(1, 1);
-    return (typeof imageData.data.buffer !== 'undefined');
-  };
-} else {
-  hasCanvasTypedArrays = function () { return true; };
+    // Zeroing the width and height cause Firefox to release graphics
+    // resources immediately, which can greatly reduce memory consumption.
+    canvasAndContext.canvas.width = 0;
+    canvasAndContext.canvas.height = 0;
+    canvasAndContext.canvas = null;
+    canvasAndContext.context = null;
+  }
 }
 
-var LinkTarget = {
+class DOMCMapReaderFactory {
+  constructor({ baseUrl = null, isCompressed = false, }) {
+    this.baseUrl = baseUrl;
+    this.isCompressed = isCompressed;
+  }
+
+  fetch({ name, }) {
+    if (!this.baseUrl) {
+      return Promise.reject(new Error(
+        'The CMap "baseUrl" parameter must be specified, ensure that ' +
+        'the "cMapUrl" and "cMapPacked" API parameters are provided.'));
+    }
+    if (!name) {
+      return Promise.reject(new Error('CMap name must be specified.'));
+    }
+    return new Promise((resolve, reject) => {
+      let url = this.baseUrl + name + (this.isCompressed ? '.bcmap' : '');
+
+      let request = new XMLHttpRequest();
+      request.open('GET', url, true);
+
+      if (this.isCompressed) {
+        request.responseType = 'arraybuffer';
+      }
+      request.onreadystatechange = () => {
+        if (request.readyState !== XMLHttpRequest.DONE) {
+          return;
+        }
+        if (request.status === 200 || request.status === 0) {
+          let data;
+          if (this.isCompressed && request.response) {
+            data = new Uint8Array(request.response);
+          } else if (!this.isCompressed && request.responseText) {
+            data = stringToBytes(request.responseText);
+          }
+          if (data) {
+            resolve({
+              cMapData: data,
+              compressionType: this.isCompressed ?
+                CMapCompressionType.BINARY : CMapCompressionType.NONE,
+            });
+            return;
+          }
+        }
+        reject(new Error('Unable to load ' +
+                         (this.isCompressed ? 'binary ' : '') +
+                         'CMap at: ' + url));
+      };
+
+      request.send(null);
+    });
+  }
+}
+
+class DOMSVGFactory {
+  create(width, height) {
+    assert(width > 0 && height > 0, 'Invalid SVG dimensions');
+
+    let svg = document.createElementNS(SVG_NS, 'svg:svg');
+    svg.setAttribute('version', '1.1');
+    svg.setAttribute('width', width + 'px');
+    svg.setAttribute('height', height + 'px');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+
+    return svg;
+  }
+
+  createElement(type) {
+    assert(typeof type === 'string', 'Invalid SVG element type');
+
+    return document.createElementNS(SVG_NS, type);
+  }
+}
+
+/**
+ * @typedef {Object} PageViewportParameters
+ * @property {Array} viewBox - The xMin, yMin, xMax and yMax coordinates.
+ * @property {number} scale - The scale of the viewport.
+ * @property {number} rotation - The rotation, in degrees, of the viewport.
+ * @property {number} offsetX - (optional) The vertical, i.e. x-axis, offset.
+ *   The default value is `0`.
+ * @property {number} offsetY - (optional) The horizontal, i.e. y-axis, offset.
+ *   The default value is `0`.
+ * @property {boolean} dontFlip - (optional) If true, the x-axis will not be
+ *   flipped. The default value is `false`.
+ */
+
+/**
+ * @typedef {Object} PageViewportCloneParameters
+ * @property {number} scale - (optional) The scale, overriding the one in the
+ *   cloned viewport. The default value is `this.scale`.
+ * @property {number} rotation - (optional) The rotation, in degrees, overriding
+ *   the one in the cloned viewport. The default value is `this.rotation`.
+ * @property {boolean} dontFlip - (optional) If true, the x-axis will not be
+ *   flipped. The default value is `false`.
+ */
+
+/**
+ * PDF page viewport created based on scale, rotation and offset.
+ */
+class PageViewport {
+  /**
+   * @param {PageViewportParameters}
+   */
+  constructor({ viewBox, scale, rotation, offsetX = 0, offsetY = 0,
+                dontFlip = false, }) {
+    this.viewBox = viewBox;
+    this.scale = scale;
+    this.rotation = rotation;
+    this.offsetX = offsetX;
+    this.offsetY = offsetY;
+
+    // creating transform to convert pdf coordinate system to the normal
+    // canvas like coordinates taking in account scale and rotation
+    let centerX = (viewBox[2] + viewBox[0]) / 2;
+    let centerY = (viewBox[3] + viewBox[1]) / 2;
+    let rotateA, rotateB, rotateC, rotateD;
+    rotation = rotation % 360;
+    rotation = rotation < 0 ? rotation + 360 : rotation;
+    switch (rotation) {
+      case 180:
+        rotateA = -1; rotateB = 0; rotateC = 0; rotateD = 1;
+        break;
+      case 90:
+        rotateA = 0; rotateB = 1; rotateC = 1; rotateD = 0;
+        break;
+      case 270:
+        rotateA = 0; rotateB = -1; rotateC = -1; rotateD = 0;
+        break;
+      // case 0:
+      default:
+        rotateA = 1; rotateB = 0; rotateC = 0; rotateD = -1;
+        break;
+    }
+
+    if (dontFlip) {
+      rotateC = -rotateC; rotateD = -rotateD;
+    }
+
+    let offsetCanvasX, offsetCanvasY;
+    let width, height;
+    if (rotateA === 0) {
+      offsetCanvasX = Math.abs(centerY - viewBox[1]) * scale + offsetX;
+      offsetCanvasY = Math.abs(centerX - viewBox[0]) * scale + offsetY;
+      width = Math.abs(viewBox[3] - viewBox[1]) * scale;
+      height = Math.abs(viewBox[2] - viewBox[0]) * scale;
+    } else {
+      offsetCanvasX = Math.abs(centerX - viewBox[0]) * scale + offsetX;
+      offsetCanvasY = Math.abs(centerY - viewBox[1]) * scale + offsetY;
+      width = Math.abs(viewBox[2] - viewBox[0]) * scale;
+      height = Math.abs(viewBox[3] - viewBox[1]) * scale;
+    }
+    // creating transform for the following operations:
+    // translate(-centerX, -centerY), rotate and flip vertically,
+    // scale, and translate(offsetCanvasX, offsetCanvasY)
+    this.transform = [
+      rotateA * scale,
+      rotateB * scale,
+      rotateC * scale,
+      rotateD * scale,
+      offsetCanvasX - rotateA * scale * centerX - rotateC * scale * centerY,
+      offsetCanvasY - rotateB * scale * centerX - rotateD * scale * centerY
+    ];
+
+    this.width = width;
+    this.height = height;
+  }
+
+  /**
+   * Clones viewport, with optional additional properties.
+   * @param {PageViewportCloneParameters} - (optional)
+   * @return {PageViewport} Cloned viewport.
+   */
+  clone({ scale = this.scale, rotation = this.rotation,
+          dontFlip = false, } = {}) {
+    return new PageViewport({
+      viewBox: this.viewBox.slice(),
+      scale,
+      rotation,
+      offsetX: this.offsetX,
+      offsetY: this.offsetY,
+      dontFlip,
+    });
+  }
+
+  /**
+   * Converts PDF point to the viewport coordinates. For examples, useful for
+   * converting PDF location into canvas pixel coordinates.
+   * @param {number} x - The x-coordinate.
+   * @param {number} y - The y-coordinate.
+   * @return {Object} Object containing `x` and `y` properties of the
+   *   point in the viewport coordinate space.
+   * @see {@link convertToPdfPoint}
+   * @see {@link convertToViewportRectangle}
+   */
+  convertToViewportPoint(x, y) {
+    return Util.applyTransform([x, y], this.transform);
+  }
+
+  /**
+   * Converts PDF rectangle to the viewport coordinates.
+   * @param {Array} rect - The xMin, yMin, xMax and yMax coordinates.
+   * @return {Array} Array containing corresponding coordinates of the rectangle
+   *   in the viewport coordinate space.
+   * @see {@link convertToViewportPoint}
+   */
+  convertToViewportRectangle(rect) {
+    let tl = Util.applyTransform([rect[0], rect[1]], this.transform);
+    let br = Util.applyTransform([rect[2], rect[3]], this.transform);
+    return [tl[0], tl[1], br[0], br[1]];
+  }
+
+  /**
+   * Converts viewport coordinates to the PDF location. For examples, useful
+   * for converting canvas pixel location into PDF one.
+   * @param {number} x - The x-coordinate.
+   * @param {number} y - The y-coordinate.
+   * @return {Object} Object containing `x` and `y` properties of the
+   *   point in the PDF coordinate space.
+   * @see {@link convertToViewportPoint}
+   */
+  convertToPdfPoint(x, y) {
+    return Util.applyInverseTransform([x, y], this.transform);
+  }
+}
+
+var RenderingCancelledException = (function RenderingCancelledException() {
+  function RenderingCancelledException(msg, type) {
+    this.message = msg;
+    this.type = type;
+  }
+
+  RenderingCancelledException.prototype = new Error();
+  RenderingCancelledException.prototype.name = 'RenderingCancelledException';
+  RenderingCancelledException.constructor = RenderingCancelledException;
+
+  return RenderingCancelledException;
+})();
+
+const LinkTarget = {
   NONE: 0, // Default value.
   SELF: 1,
   BLANK: 2,
@@ -107,7 +308,7 @@ var LinkTarget = {
   TOP: 4,
 };
 
-var LinkTargetStringMap = [
+const LinkTargetStringMap = [
   '',
   '_self',
   '_blank',
@@ -119,8 +320,10 @@ var LinkTargetStringMap = [
  * @typedef ExternalLinkParameters
  * @typedef {Object} ExternalLinkParameters
  * @property {string} url - An absolute URL.
- * @property {LinkTarget} target - The link target.
- * @property {string} rel - The link relationship.
+ * @property {LinkTarget} target - (optional) The link target.
+ *   The default value is `LinkTarget.NONE`.
+ * @property {string} rel - (optional) The link relationship.
+ *   The default value is `DEFAULT_LINK_REL`.
  */
 
 /**
@@ -128,22 +331,16 @@ var LinkTargetStringMap = [
  * @param {HTMLLinkElement} link - The link element.
  * @param {ExternalLinkParameters} params
  */
-function addLinkAttributes(link, params) {
-  var url = params && params.url;
+function addLinkAttributes(link, { url, target, rel, } = {}) {
   link.href = link.title = (url ? removeNullCharacters(url) : '');
 
   if (url) {
-    var target = params.target;
-    if (typeof target === 'undefined') {
-      target = getDefaultSetting('externalLinkTarget');
-    }
-    link.target = LinkTargetStringMap[target];
+    const LinkTargetValues = Object.values(LinkTarget);
+    let targetIndex =
+      LinkTargetValues.includes(target) ? target : LinkTarget.NONE;
+    link.target = LinkTargetStringMap[targetIndex];
 
-    var rel = params.rel;
-    if (typeof rel === 'undefined') {
-      rel = getDefaultSetting('externalLinkRel');
-    }
-    link.rel = rel;
+    link.rel = (typeof rel === 'string' ? rel : DEFAULT_LINK_REL);
   }
 }
 
@@ -157,92 +354,104 @@ function getFilenameFromUrl(url) {
   return url.substring(url.lastIndexOf('/', end) + 1, end);
 }
 
-function getDefaultSetting(id) {
-  // The list of the settings and their default is maintained for backward
-  // compatibility and shall not be extended or modified. See also global.js.
-  var globalSettings = sharedUtil.globalScope.PDFJS;
-  switch (id) {
-    case 'pdfBug':
-      return globalSettings ? globalSettings.pdfBug : false;
-    case 'disableAutoFetch':
-      return globalSettings ? globalSettings.disableAutoFetch : false;
-    case 'disableStream':
-      return globalSettings ? globalSettings.disableStream : false;
-    case 'disableRange':
-      return globalSettings ? globalSettings.disableRange : false;
-    case 'disableFontFace':
-      return globalSettings ? globalSettings.disableFontFace : false;
-    case 'disableCreateObjectURL':
-      return globalSettings ? globalSettings.disableCreateObjectURL : false;
-    case 'disableWebGL':
-      return globalSettings ? globalSettings.disableWebGL : true;
-    case 'cMapUrl':
-      return globalSettings ? globalSettings.cMapUrl : null;
-    case 'cMapPacked':
-      return globalSettings ? globalSettings.cMapPacked : false;
-    case 'postMessageTransfers':
-      return globalSettings ? globalSettings.postMessageTransfers : true;
-    case 'workerSrc':
-      return globalSettings ? globalSettings.workerSrc : null;
-    case 'disableWorker':
-      return globalSettings ? globalSettings.disableWorker : false;
-    case 'maxImageSize':
-      return globalSettings ? globalSettings.maxImageSize : -1;
-    case 'imageResourcesPath':
-      return globalSettings ? globalSettings.imageResourcesPath : '';
-    case 'isEvalSupported':
-      return globalSettings ? globalSettings.isEvalSupported : true;
-    case 'externalLinkTarget':
-      if (!globalSettings) {
-        return LinkTarget.NONE;
+class StatTimer {
+  constructor(enable = true) {
+    this.enabled = !!enable;
+    this.started = Object.create(null);
+    this.times = [];
+  }
+
+  time(name) {
+    if (!this.enabled) {
+      return;
+    }
+    if (name in this.started) {
+      warn('Timer is already running for ' + name);
+    }
+    this.started[name] = Date.now();
+  }
+
+  timeEnd(name) {
+    if (!this.enabled) {
+      return;
+    }
+    if (!(name in this.started)) {
+      warn('Timer has not been started for ' + name);
+    }
+    this.times.push({
+      'name': name,
+      'start': this.started[name],
+      'end': Date.now(),
+    });
+    // Remove timer from started so it can be called again.
+    delete this.started[name];
+  }
+
+  toString() {
+    let times = this.times;
+    // Find the longest name for padding purposes.
+    let out = '', longest = 0;
+    for (let i = 0, ii = times.length; i < ii; ++i) {
+      let name = times[i]['name'];
+      if (name.length > longest) {
+        longest = name.length;
       }
-      switch (globalSettings.externalLinkTarget) {
-        case LinkTarget.NONE:
-        case LinkTarget.SELF:
-        case LinkTarget.BLANK:
-        case LinkTarget.PARENT:
-        case LinkTarget.TOP:
-          return globalSettings.externalLinkTarget;
-      }
-      warn('PDFJS.externalLinkTarget is invalid: ' +
-           globalSettings.externalLinkTarget);
-      // Reset the external link target, to suppress further warnings.
-      globalSettings.externalLinkTarget = LinkTarget.NONE;
-      return LinkTarget.NONE;
-    case 'externalLinkRel':
-      return globalSettings ? globalSettings.externalLinkRel : 'noreferrer';
-    case 'enableStats':
-      return !!(globalSettings && globalSettings.enableStats);
-    default:
-      throw new Error('Unknown default setting: ' + id);
+    }
+    for (let i = 0, ii = times.length; i < ii; ++i) {
+      let span = times[i];
+      let duration = span.end - span.start;
+      out += `${span['name'].padEnd(longest)} ${duration}ms\n`;
+    }
+    return out;
   }
 }
 
-function isExternalLinkTargetSet() {
-  var externalLinkTarget = getDefaultSetting('externalLinkTarget');
-  switch (externalLinkTarget) {
-    case LinkTarget.NONE:
-      return false;
-    case LinkTarget.SELF:
-    case LinkTarget.BLANK:
-    case LinkTarget.PARENT:
-    case LinkTarget.TOP:
-      return true;
+/**
+ * Helps avoid having to initialize {StatTimer} instances, e.g. one for every
+ * page, in cases where the collected stats are not actually being used.
+ * This (dummy) class can thus, since all its methods are `static`, be directly
+ * shared between multiple call-sites without the need to be initialized first.
+ *
+ * NOTE: This must implement the same interface as {StatTimer}.
+ */
+class DummyStatTimer {
+  constructor() {
+    unreachable('Cannot initialize DummyStatTimer.');
+  }
+
+  static time(name) {}
+
+  static timeEnd(name) {}
+
+  static toString() {
+    return '';
   }
 }
 
-function isValidUrl(url, allowRelative) {
-  deprecated('isValidUrl(), please use createValidAbsoluteUrl() instead.');
-  var baseUrl = allowRelative ? 'http://example.com' : null;
-  return createValidAbsoluteUrl(url, baseUrl) !== null;
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    let script = document.createElement('script');
+    script.src = src;
+
+    script.onload = resolve;
+    script.onerror = function() {
+      reject(new Error(`Cannot load script at: ${script.src}`));
+    };
+    (document.head || document.documentElement).appendChild(script);
+  });
 }
 
-exports.CustomStyle = CustomStyle;
-exports.addLinkAttributes = addLinkAttributes;
-exports.isExternalLinkTargetSet = isExternalLinkTargetSet;
-exports.isValidUrl = isValidUrl;
-exports.getFilenameFromUrl = getFilenameFromUrl;
-exports.LinkTarget = LinkTarget;
-exports.hasCanvasTypedArrays = hasCanvasTypedArrays;
-exports.getDefaultSetting = getDefaultSetting;
-}));
+export {
+  PageViewport,
+  RenderingCancelledException,
+  addLinkAttributes,
+  getFilenameFromUrl,
+  LinkTarget,
+  DEFAULT_LINK_REL,
+  DOMCanvasFactory,
+  DOMCMapReaderFactory,
+  DOMSVGFactory,
+  StatTimer,
+  DummyStatTimer,
+  loadScript,
+};
