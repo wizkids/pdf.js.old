@@ -263,6 +263,8 @@ const OPS = {
   paintImageMaskXObjectRepeat: 89,
   paintSolidColorImageMask: 90,
   constructPath: 91,
+  markStartAnnotation: 1000,
+  markEndAnnotation: 1001,
 };
 
 const UNSUPPORTED_FEATURES = {

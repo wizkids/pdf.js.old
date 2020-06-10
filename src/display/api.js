@@ -836,6 +836,7 @@ class PDFDocumentProxy {
  *                    CSS <color> value, a CanvasGradient object (a linear or
  *                    radial gradient) or a CanvasPattern object (a repetitive
  *                    image). The default value is 'rgb(255,255,255)'.
+ * @property {Object} [annotationCanvases]
  */
 
 /**
@@ -1017,6 +1018,9 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
         }
         stats.time('Rendering');
         internalRenderTask.initializeGraphics(transparency);
+        if (params.annotationCanvases) {
+          params.annotationCanvases.canvases = internalRenderTask.gfx.annotationCanvases;
+        }
         internalRenderTask.operatorListChanged();
       }).catch(complete);
 

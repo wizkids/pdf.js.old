@@ -236,8 +236,10 @@ var Page = (function PageClosure() {
         // Collect the operator list promises for the annotations. Each promise
         // is resolved with the complete operator list for a single annotation.
         var i, ii, opListPromises = [];
+        const annotationIds = [];
         for (i = 0, ii = annotations.length; i < ii; i++) {
           if (isAnnotationRenderable(annotations[i], intent)) {
+            annotationIds.push(annotations[i].data.id);
             opListPromises.push(annotations[i].getOperatorList(
               partialEvaluator, task, renderInteractiveForms));
           }
@@ -246,7 +248,9 @@ var Page = (function PageClosure() {
         return Promise.all(opListPromises).then(function(opLists) {
           pageOpList.addOp(OPS.beginAnnotations, []);
           for (i = 0, ii = opLists.length; i < ii; i++) {
+            pageOpList.addOp(OPS.markStartAnnotation, [annotationIds[i]]); // R75
             pageOpList.addOpList(opLists[i]);
+            pageOpList.addOp(OPS.markEndAnnotation, [annotationIds[i]]); // R75
           }
           pageOpList.addOp(OPS.endAnnotations, []);
 

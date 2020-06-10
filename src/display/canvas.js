@@ -408,6 +408,8 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
   function CanvasGraphics(canvasCtx, commonObjs, objs, canvasFactory,
                           webGLContext, imageLayer) {
     this.ctx = canvasCtx;
+    this.tmpCtx = null;
+    this.annotationCanvases = {};
     this.current = new CanvasExtraState();
     this.stateStack = [];
     this.pendingClip = null;
@@ -1894,6 +1896,27 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         this.ctx.drawImage(groupCtx.canvas, 0, 0);
       }
       this.restore();
+    },
+
+    markStartAnnotation: function CanvasGraphics_markStartAnnotation(id) {
+      const canvas = document.createElement("canvas");
+      canvas.width = this.ctx.canvas.width;
+      canvas.height = this.ctx.canvas.height;
+      this.annotationCanvases[id] = canvas;
+      this.tmpCtx = this.ctx;
+      this.ctx = canvas.getContext("2d", { alpha: true });
+      addContextCurrentTransform(this.ctx);
+      this.ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      this.save();
+      if (this.baseTransform) {
+        this.ctx.setTransform.apply(this.ctx, this.baseTransform);
+      }
+    },
+
+    markEndAnnotation: function CanvasGraphics_markEndAnnotation() {
+      this.restore();
+      this.ctx = this.tmpCtx;
     },
 
     beginAnnotations: function CanvasGraphics_beginAnnotations() {

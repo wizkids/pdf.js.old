@@ -586,6 +586,7 @@ class PDFPageView {
       viewport: this.viewport,
       enableWebGL: this.enableWebGL,
       renderInteractiveForms: this.renderInteractiveForms,
+      annotationCanvases: {},
     };
     let renderTask = this.pdfPage.render(renderContext);
     renderTask.onContinue = function (cont) {
@@ -597,11 +598,22 @@ class PDFPageView {
       }
     };
 
+    function showMyAnnotationsCanvases() {
+      for (const id in renderContext.annotationCanvases.canvases) {
+        const _canvas = renderContext.annotationCanvases.canvases[id];
+        canvas.parentElement.appendChild(_canvas);
+        _canvas.setAttribute("data-id", id);
+        _canvas.classList.add("annotation");
+      }
+    }
+
     renderTask.promise.then(function() {
       showCanvas();
+      showMyAnnotationsCanvases();
       renderCapability.resolve(undefined);
     }, function(error) {
       showCanvas();
+      showMyAnnotationsCanvases();
       renderCapability.reject(error);
     });
     return result;
