@@ -723,8 +723,6 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
   var LINE_JOIN_STYLES = ['miter', 'round', 'bevel'];
   var NORMAL_CLIP = {};
   var EO_CLIP = {};
-  
-  var markedContentStack = [];
 
   CanvasGraphics.prototype = {
 
@@ -2218,24 +2216,14 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       // TODO Marked content.
     },
     beginMarkedContent: function CanvasGraphics_beginMarkedContent(tag) {
-      markedContentStack.push(null);
+      // TODO Marked content.
     },
     beginMarkedContentProps: function CanvasGraphics_beginMarkedContentProps(
                                         tag, properties) {
-      if (tag === "OC" && properties.name === "AppWriterStamps") {
-        markedContentStack.push(this.ctx);
-        var canvas = document.createElement("canvas");
-        this.ctx = canvas.getContext('2d');
-        addContextCurrentTransform(this.ctx);
-      } else {
-        markedContentStack.push(null);
-      }
+      // TODO Marked content.
     },
     endMarkedContent: function CanvasGraphics_endMarkedContent() {
-      var ctx = markedContentStack.pop();
-      if (ctx) {
-        this.ctx = ctx;
-      }
+      // TODO Marked content.
     },
 
     // Compatibility

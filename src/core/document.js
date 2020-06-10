@@ -81,21 +81,6 @@ var Page = (function PageClosure() {
     get content() {
       return this.pageDict.get('Contents');
     },
-    
-    get metadataString() {
-      if (typeof this.metadata_ === "string" || this.metadata_ === null) return this.metadata_;
-      
-      var stream = shadow(this, 'metadata', this._getInheritableProperty('Metadata'));
-      if (stream && typeof stream.getBytes === "function") {
-        var bytes = stream.getBytes();
-        
-        var decoder = new TextDecoder("utf-8");
-        this.metadata_ = decoder.decode(bytes);
-        return this.metadata_;
-      } else {
-        return this.metadata_;
-      }
-    },
 
     get resources() {
       // For robustness: The spec states that a \Resources entry has to be

@@ -1117,16 +1117,6 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
         pump();
       });
     },
-    
-    /**
-     * Returns the page metadata.
-     * @return {Promise} that resolves with page metadata.
-     */
-    getMetadata: function PDFPageProxy_getMetadata() {
-      return this.transport.messageHandler.sendWithPromise('GetPageMetadata', {
-        pageIndex: this.pageNumber - 1
-      });
-    },
 
     /**
      * Destroys page object.
