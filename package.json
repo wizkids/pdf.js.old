@@ -45,7 +45,9 @@
   "scripts": {
     "test": "gulp lint unittestcli externaltest",
     "dev": "gulp server && start http://localhost:8888/web/viewer.html",
-    "dist-pre": "gulp dist-pre"
+    "dist-pre": "gulp dist-pre",
+    "preshrinkwrap": "git checkout -- npm-shrinkwrap.json",
+    "postshrinkwrap": "git checkout -- npm-shrinkwrap.json"
   },
   "repository": {
     "type": "git",
