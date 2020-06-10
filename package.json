@@ -43,7 +43,9 @@
     "yargs": "^11.1.0"
   },
   "scripts": {
-    "test": "gulp lint unittestcli externaltest"
+    "test": "gulp lint unittestcli externaltest",
+    "dev": "gulp server && start http://localhost:8888/web/viewer.html",
+    "dist-pre": "gulp dist-pre"
   },
   "repository": {
     "type": "git",
