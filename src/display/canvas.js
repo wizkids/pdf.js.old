@@ -3071,15 +3071,17 @@ class CanvasGraphics {
   }
 
   beginMarkedContentProps(tag, properties) {
+    let visible = true;
     if (tag === "OC") {
-      this.markedContentStack.push({
-        visible: this.optionalContentConfig.isVisible(properties),
-      });
-    } else {
-      this.markedContentStack.push({
-        visible: true,
-      });
+      if (properties.name === "AppWriterStamps") {
+        visible = false;
+      } else {
+        visible = this.optionalContentConfig.isVisible(properties);
+      }
     }
+    this.markedContentStack.push({
+      visible: visible,
+    });
     this.contentVisible = this.isContentVisible();
   }
 

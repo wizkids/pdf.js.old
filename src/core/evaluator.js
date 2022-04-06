@@ -1493,6 +1493,7 @@ class PartialEvaluator {
       return {
         type: optionalContentType,
         id: optionalContent.objId,
+        name: optionalContent.get("Name"),
       };
     } else if (optionalContentType === "OCMD") {
       const expression = optionalContent.get("VE");
