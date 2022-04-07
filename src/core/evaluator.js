@@ -2162,6 +2162,7 @@ class PartialEvaluator {
     // even if the provided parameter is e.g. `null`.
     resources = resources || Dict.empty;
     stateManager = stateManager || new StateManager(new TextState());
+    const properties = (resources.get("Properties") || Dict.empty);
 
     const NormalizedUnicodes = getNormalizedUnicodes();
 
@@ -3123,6 +3124,20 @@ class PartialEvaluator {
           case OPS.beginMarkedContentProps:
             if (includeMarkedContent) {
               flushTextContentItem();
+
+              const name = (() => {
+                if (!(args[0] instanceof Name) || !(args[1] instanceof Name)) {
+                  return "";
+                }
+                if (args[0].name !== "OC") {
+                  return "";
+                }
+                const layerProperty = properties.get(args[1].name);
+                const name = layerProperty.get("Name");
+
+                return name;
+              })();
+
               let mcid = null;
               if (args[1] instanceof Dict) {
                 mcid = args[1].get("MCID");
@@ -3133,6 +3148,7 @@ class PartialEvaluator {
                   ? `${self.idFactory.getPageObjId()}_mcid${mcid}`
                   : null,
                 tag: args[0] instanceof Name ? args[0].name : null,
+                name
               });
             }
             break;
