@@ -90,6 +90,9 @@ class Page {
     this.resourcesPromise = null;
     this.xfaFactory = xfaFactory;
 
+    /** @private */
+    this._metadata = undefined;
+
     const idCounters = {
       obj: 0,
     };
@@ -125,6 +128,25 @@ class Page {
 
   get content() {
     return this.pageDict.getArray("Contents");
+  }
+
+  get metadataString() {
+    if (typeof this._metadata === "string" || this._metadata === null) {
+      return this._metadata;
+    }
+
+    const stream = shadow(
+      this,
+      "metadata",
+      this._getInheritableProperty("Metadata") || Dict.empty
+    );
+    if (stream && typeof stream.getBytes === "function") {
+      const bytes = stream.getBytes();
+
+      this._metadata = (new TextDecoder("utf-8")).decode(bytes);
+    }
+
+    return this._metadata;
   }
 
   get resources() {

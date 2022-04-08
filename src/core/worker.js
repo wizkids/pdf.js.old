@@ -724,6 +724,15 @@ class WorkerMessageHandler {
       });
     });
 
+    handler.on('GetPageMetadata', function GetPageMetadata(data) {
+      const pageIndex = data.pageIndex;
+
+      return pdfManager.getPage(pageIndex)
+      .then(function(page) {
+        return page.metadataString;
+      })
+    });
+
     handler.on("GetTextContent", function wphExtractText(data, sink) {
       const pageIndex = data.pageIndex;
 

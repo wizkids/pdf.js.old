@@ -1653,6 +1653,16 @@ class PDFPageProxy {
   }
 
   /**
+   * Returns the page metadata.
+   * @return {Promise} that resolves with page metadata.
+   */
+  getMetadata() {
+    return this._transport.messageHandler.sendWithPromise("GetPageMetadata", {
+      pageIndex: this.pageNumber - 1
+    });
+  }
+
+  /**
    * @returns {Promise<StructTreeNode>} A promise that is resolved with a
    *   {@link StructTreeNode} object that represents the page's structure tree,
    *   or `null` when no structure tree is present for the current page.
