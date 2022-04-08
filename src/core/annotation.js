@@ -1288,6 +1288,38 @@ class WidgetAnnotation extends Annotation {
 
     data.readOnly = this.hasFieldFlag(AnnotationFieldFlag.READONLY);
     data.hidden = this._hasFlag(data.annotationFlags, AnnotationFlag.HIDDEN);
+
+    // Building the full field name by collecting the field and
+    // its ancestors 'T' data and joining them using '.'.
+    const fieldName = [];
+    let namedItem = dict;
+    let ref = params.ref;
+    while (namedItem) {
+      const parent = namedItem.get("Parent");
+      const parentRef = namedItem.getRaw("Parent");
+      const name = namedItem.get("T");
+      if (name) {
+        fieldName.unshift(stringToPDFString(name));
+      } else if (parent && ref) {
+        // The field name is absent, that means more than one field
+        // with the same name may exist. Replacing the empty name
+        // with the '`' plus index in the parent's 'Kids' array.
+        // This is not in the PDF spec but necessary to id the
+        // the input controls.
+        const kids = parent.get("Kids");
+        let j, jj;
+        for (j = 0, jj = kids.length; j < jj; j++) {
+          const kidRef = kids[j];
+          if (kidRef.num === ref.num && kidRef.gen === ref.gen) {
+            break;
+          }
+        }
+        fieldName.unshift('`' + j);
+      }
+      namedItem = parent;
+      ref = parentRef;
+    }
+    data.fullName = fieldName.join('.');
   }
 
   /**
